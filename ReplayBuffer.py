@@ -1,38 +1,15 @@
 import numpy as np
-
+import random
+from collections import deque
 
 class ReplayBuffer:
-    def __init__(self, capacity, obs_dim, state_dim, action_dim, batch_size):
-        self.capacity = capacity
-        self.obs_cap = np.empty((capacity, obs_dim))
-        self.next_obs_cap = np.empty((capacity, obs_dim))
-        self.state_cap = np.empty((capacity, state_dim))
-        self.next_state_cap = np.empty((capacity, state_dim))
-        self.action_cap = np.empty((capacity, action_dim))
-        self.reward_cap = np.empty((capacity, 1))
-        self.done_cap = np.empty((capacity, 1))
-        self.batch_size = batch_size
-        self.current = 0
+    def __init__(self, max_size, state_dim, action_dim):
+        self.buffer = deque(maxlen=max_size)
 
-    def add_memo(self, obs, next_obs, state, next_state, action, reward, done):
-        self.obs_cap[self.current] =obs
-        self.next_obs_cap[self.current] =next_obs
-        self.state_cap[self.current] =state
-        self.next_state_cap[self.current] =next_state
-        self.action_cap[self.current] =action
-        self.reward_cap[self.current] =reward
+    def store(self, state, action, reward, next_state, done):
+        self.buffer.append((state, action, reward, next_state, done))
 
-        self.done_cap[self.current] =done
-
-        self.current = (self.current + 1) % self.capacity
-
-    def sample(self, idxes):
-        obs = self.obs_cap[idxes]
-        next_obs = self.next_obs_cap[idxes]
-        state = self.state_cap[idxes]
-        next_state = self.next_state_cap[idxes]
-        action = self.action_cap[idxes]
-        reward = self.reward_cap[idxes]
-        done = self.done_cap[idxes]
-
-        return state, action, reward, next_state, done
+    def sample(self, batch_size):
+        batch = random.sample(self.buffer, batch_size)
+        state, action, reward, next_state, done = zip(*batch)
+        return np.array(state), np.array(action), np.array(reward), np.array(next_state), np.array(done)

@@ -20,10 +20,11 @@ class uavENV:
         self.f_ue = 2e8
         self.s = 1000  # cycles per bit
         self.r_chip = 1e-27  # cpu power model coeff (UAV server)
+
         # mec_env 参数（reward 相关）
         self.LAMBDA_E = 0.5
         self.LAMBDA_T = 0.5
-        self.K_ENERGY_LOCAL = 5e-27
+        
         self.CAPABILITY_E = 4  # GHz equivalent used in mec_env for server proc (we use f_uav for UAV server)
         self.N_UNITS = 8  # server parallel units (来自 mec_env)
         self.MAX_DDL = 1.0  # 最大允许时延（s） - adapt from mec_env
@@ -45,8 +46,12 @@ class uavENV:
         self.ue_tasks = np.zeros(self.n_ues, dtype=np.float64)
         self.ue_block = np.zeros(self.n_ues, dtype=int)
 
-        self.step_coount = 0
+        self.step_count = 0
+        self.max_steps = 500
 
+        self.state_dim = 3 + 3 * self.n_ues
+        self.action_dim = 4
+        self.action_bound = [-1.0, 1.0]
 
     def reset(self):
         
@@ -56,10 +61,10 @@ class uavENV:
 
         
         self.ue_locations = np.random.uniform(0, self.width, size=(self.n_ues, 2))
-        self.ue_tasks = np.random.randint(self.MIN_TASK, self.MAX_TASK, size=self.n_ues).astype(np.float64)
+        self.ue_tasks = np.random.randint(self.MIN_TASK, self.MAX_TASK + 1, size=self.n_ues).astype(np.float64)
         self.ue_block = np.random.randint(0, 2, size=self.n_ues)
 
-        self.step_coount = 0
+        self.step_count = 0
 
         return self.get_obs_all()
     
@@ -80,26 +85,27 @@ class uavENV:
         return np.array(obs_list)
         
 
-    def channel_gain(self, uav_locations, ue_locations, block_flag):
-        x= uav_locations[0]-ue_locations[0]
-        y= uav_locations[1]-ue_locations[1]
+    def channel_gain(self, uav_location, ue_location, block_flag):
+        x= uav_location[0]-ue_location[0]
+        y= uav_location[1]-ue_location[1]
         d= math.sqrt(x*x + y*y + self.height*self.height)
         g = abs(self.alpha0 / (d ** 2))
-        p_noise = self.p_noise_los if block_flag == 0 else self.p_noise_nlos
+        p_noise = self.p_noisy_los if block_flag == 0 else self.p_noisy_nlos
 
         return g, p_noise, d
     
     def step(self, actions):
-        
+
         rewards = np.zeros(self.n_uavs)
         task_completed = np.zeros(self.n_ues, dtype=bool)
 
         offload_records = []
-        local_records = []
+        
 
         for i in range(self.n_uavs):
             action = np.clip((actions[i] + 1) / 2 , 0, 1)
-
+            action = np.nan_to_num(action, nan=0.0)
+            print(f"action: {action}")
             ue_id = int(action[0] * self.n_ues) % self.n_ues
             theta = float(action[1] * 2 * np.pi)
             dist_scalar = action[2]
@@ -118,7 +124,9 @@ class uavENV:
 
             g, p_noise, d = self.channel_gain(new_uav_location, self.ue_locations[ue_id], int(self.ue_block[ue_id]))
             p_uplink = 0.1
-            trans_rate = self.B * math.log2(1 + p_uplink * g / p_noise)
+
+            snr = max(0.0, p_uplink * g / p_noise)
+            trans_rate = self.B * math.log2(1 + snr)
 
             bits_off = offload_ratio * ue_task_size
             bits_local = (1 - offload_ratio) * ue_task_size
@@ -130,9 +138,10 @@ class uavENV:
             e_trans = p_uplink * t_tr
 
             t_edge = bits_off * self.s / self.f_uav
-            t_local = bits_local * self.s / self.f_uav
+            t_local = bits_local * self.s / self.f_ue
 
-            e_edge = self.r * self.f_uav **3 * t_edge * 10
+            e_edge = self.r * (self.f_uav **3) * t_edge * 10
+            e_local = self.r * (self.f_ue **3) * t_local * 10
 
             offload_records.append({
                 "uav": i,
@@ -145,6 +154,7 @@ class uavENV:
                 "new_uav_location": new_uav_location,
                 "e_trans": e_trans,
                 "e_edge": e_edge,
+                "e_local": e_local,
                 "e_fly": e_fly
             })
 
@@ -156,14 +166,14 @@ class uavENV:
                 record = offload_records[rank]
                 uav = record["uav"]
                 ue = record["ue"]
-                if record["bits_off"] <= 0:
 
+                if record["bits_off"] <= 0:
                     self.uav_locations[uav] = record["new_uav_location"]
                     self.uav_battery[uav] -= record["e_fly"]
 
                     time_norm = min(record["t_local"], self.MAX_DDL) / self.MAX_DDL
 
-                    rewards[uav] += -(self.LAMBDA_E * record["e_local"] + self.LAMBDA_T * time_norm)
+                    rewards[uav] += -(self.LAMBDA_E * record["e_fly"] + self.LAMBDA_T * time_norm)
                     continue
 
                 if np.any(MECtime == 0):
@@ -179,10 +189,10 @@ class uavENV:
 
                 time_local_norm = min(record["t_local"], self.MAX_DDL) / self.MAX_DDL
 
-                total_energy = record["e_trans"] + record["e_edge"] + record["e_fly"]
-                rewards[uav] += -(self.LAMBDA_E * total_energy + self.LAMBDA_T * (time_off_norm + time_local_norm))
+                uav_energy = record["e_trans"] + record["e_edge"] + record["e_fly"]
+                rewards[uav] += -(self.LAMBDA_E * uav_energy + self.LAMBDA_T * (time_off_norm + time_local_norm))
 
-                self.uav_battery[uav] -= (record["e_trans"] + record["e_edge"] + record["e_fly"])
+                self.uav_battery[uav] -= uav_energy
                 self.uav_locations[uav] = record["new_uav_location"]
 
                 self.ue_tasks[ue] -= (record["bits_off"] + record["bits_local"])
@@ -195,20 +205,23 @@ class uavENV:
 
         self.uav_battery = np.clip(self.uav_battery, 0.0, 1e9)
 
-        for i in range(self.n_ues):
-            if self.ue_battery[i] <= 0:
+        for i in range(self.n_uavs):
+            if self.uav_battery[i] <= 0:
                 rewards[i] += -100.0
 
-        self.step_coount += 1
-        done = self.step_coount >= self.MAX_STEP or np.all(self.ue_tasks <= 0)
+        self.step_count += 1
+        done = (self.step_count >= self.max_steps) or (np.all(self.ue_tasks <= 0))
 
         info = {
             "task_completed": task_completed,
             "ue_tasks": self.ue_tasks,
             "uav_battery": self.uav_battery,
+            "energy": uav_energy,
+            "time": finish,
+            "offload_ratio": offload_ratio,
         }
                     
-        return self.get_state(), rewards, done, info
+        return self.get_obs_all(), rewards, done, info
 
     def update_ue(self):
         for i in range(self.n_ues):
