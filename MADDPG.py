@@ -20,35 +20,48 @@ class MADDPG_Agent:
 
         self.gamma = 0.99
         self.tau = 0.01
+        self.action_dim = action_dim
+        self.action_bound = action_bound
 
 
     def choose_action(self, state,):
         # print(f"state shape: {state.shape}")
-        state = torch.FloatTensor(state).unsqueeze(0)
+        state = torch.FloatTensor(state).unsqueeze(0).to(device)
         # print(f"state tensor shape: {state.shape}")
         with torch.no_grad():
-            action = self.actor(state).numpy().flatten()
+            action = self.actor(state).cpu().numpy().flatten()
         return action
     
-    def update_target_network(self):
+    def update_target_network(self, tau=None):
         tau = tau if tau is not None else self.tau
         for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
             target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
         for target_param, param in zip(self.target_critic.parameters(), self.critic.parameters()):
             target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
 
+    
+
     def learn(self, replay_buffer, batch_size):
         if len(replay_buffer.buffer) < batch_size:
             return
         
         state, action, reward, next_state, done = replay_buffer.sample(batch_size)
-        state = torch.FloatTensor(state)
-        action = torch.FloatTensor(action)
-        reward = torch.FloatTensor(reward).unsqueeze(1)
-        next_state = torch.FloatTensor(next_state)
-        done = torch.FloatTensor(done).unsqueeze(1)
+    
+        state = torch.FloatTensor(state).to(device)
+        # print(f"state shape: {state.shape}")
+        action = torch.FloatTensor(action).to(device)
+        # print(f"action shape: {action.shape}")
+        reward = torch.FloatTensor(reward).unsqueeze(1).to(device)
+        next_state = torch.FloatTensor(next_state).to(device)
+        # print(f"next_state shape: {next_state.shape}")
+        done = torch.FloatTensor(done).unsqueeze(1).to(device)
 
-        target_q = self.target_critic(next_state, self.target_actor(next_state))
+        
+        next_action = self.target_actor(next_state)
+        # print(f"next_action shape: {next_action.shape}")
+
+
+        target_q = self.target_critic(next_state, next_action)
         target_q = reward + (1 - done) * self.gamma * target_q
         current_q = self.critic(state, action)
         critic_loss = F.mse_loss(current_q, target_q)

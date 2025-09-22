@@ -98,14 +98,15 @@ class uavENV:
 
         rewards = np.zeros(self.n_uavs)
         task_completed = np.zeros(self.n_ues, dtype=bool)
-
+        uav_energy = np.zeros(self.n_uavs)
+        time = np.zeros(self.n_uavs)
         offload_records = []
         
 
         for i in range(self.n_uavs):
             action = np.clip((actions[i] + 1) / 2 , 0, 1)
             action = np.nan_to_num(action, nan=0.0)
-            print(f"action: {action}")
+            # print(f"action: {action}")
             ue_id = int(action[0] * self.n_ues) % self.n_ues
             theta = float(action[1] * 2 * np.pi)
             dist_scalar = action[2]
@@ -184,6 +185,7 @@ class uavENV:
                     finish = max(record["t_tr"], earliest) + record["t_edge"]
                     
                 MECtime[np.argmin(MECtime)] = finish
+                time[uav] = finish
 
                 time_off_norm = min(finish, self.MAX_DDL) / self.MAX_DDL
 
@@ -200,7 +202,7 @@ class uavENV:
                     task_completed[ue] = True
         else:
             pass
-
+        
         self.update_ue()
 
         self.uav_battery = np.clip(self.uav_battery, 0.0, 1e9)
@@ -217,7 +219,7 @@ class uavENV:
             "ue_tasks": self.ue_tasks,
             "uav_battery": self.uav_battery,
             "energy": uav_energy,
-            "time": finish,
+            "time": time,
             "offload_ratio": offload_ratio,
         }
                     

@@ -1,41 +1,25 @@
-import numpy as np
-import random
-from ENV import uavENV
+import torch
+from MADDPG import MADDPG_Agent
 
-def run_smoke_test(n_uavs, n_ues, steps, seed):
-    np.random.seed(seed)
-    random.seed(seed)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+agent = MADDPG_Agent(state_dim=9, action_dim=4, action_bound=[-1,1], lr_actor=1e-4, lr_critic=1e-3)
 
-    env = uavENV(n_uavs=n_uavs, n_ues=n_ues)
-    obs = env.reset()
+s = torch.randn(9)           # 单样本 state
+a = agent.choose_action(s.numpy())
+print("choose_action single:", a.shape)
 
-    print("Reset done.")
-    print("Observation per-agent shape:", obs.shape)   # expect (n_uavs, obs_dim)
-    print("Initial UE tasks (bits):", env.ue_tasks)
-    print("Initial UAV battery:", env.uav_battery)
-    print()
+# batch test
+s_b = torch.randn(16, 9).numpy()
+with torch.no_grad():
+    a_b = agent.actor(torch.FloatTensor(s_b).to(agent.actor.fc1.weight.device))
+print("actor batch out:", a_b.shape)
 
-    for step in range(steps):
-        # sample random continuous actions in [-1, 1] for each UAV
-        actions = np.random.uniform(-1.0, 1.0, size=(n_uavs, 4)).astype(np.float32)
-        print("actions:", actions)
-        obs, rewards, done, info = env.step(actions)
+# critic forward single
+from Model import Critic
+critic = agent.critic
+q = critic(torch.FloatTensor(s).unsqueeze(0).to(device), torch.FloatTensor(a).unsqueeze(0).to(device))
+print("critic q single shape:", q.shape)
 
-        print(f"Step {step+1}/{steps}")
-        print("  rewards:", rewards)
-        print("  any tasks finished this step:", info["task_completed"].any())
-        # show remaining total task bits and mean battery
-        print("  total remaining UE tasks (sum bits):", np.sum(info["ue_tasks"]))
-        print("  per-UAV battery:", info["uav_battery"])
-        print("  done:", done)
-        print(obs)
-
-        if not done:
-            print("Environment signaled done at step", step+1)
-            break
-
-    print("Final UE tasks:", env.ue_tasks)
-    print("Final UAV battery:", env.uav_battery)
-
-if __name__ == "__main__":
-    run_smoke_test(n_uavs=4, n_ues=2, steps=20, seed=123)
+# critic forward batch
+q_b = critic(torch.FloatTensor(s_b).to(device), a_b)
+print("critic q batch shape:", q_b.shape)

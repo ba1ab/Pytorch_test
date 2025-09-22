@@ -13,7 +13,7 @@ import pickle
 def pad_state(state, target_dim):
     return np.pad(state, (0, target_dim - len(state)), 'constant')
 
-def train_agents(env, n_episodes = 500):
+def train_agents(env, n_episodes = 10):
     # print(f"state dim: {env.state_dim}")
     n_uavs = env.n_uavs
     s_dim = env.state_dim
@@ -51,9 +51,9 @@ def train_agents(env, n_episodes = 500):
             while True:
                 actions = []
                 for j in range(n_uavs):
-                    print(f"j: {j}")
+                    #print(f"j: {j}")
                     uav_state = state[j]
-                    print(uav_state)
+                    # print(uav_state)
                     # print(f"State shape before padding: {uav_state.shape}")
                     # uav_state = pad_state(uav_state, s_dim)
                     # print(f"State shape after padding: {uav_state.shape}")
@@ -72,7 +72,7 @@ def train_agents(env, n_episodes = 500):
                     
                     # uav_next_state = pad_state(next_state[j * s_dim:(j + 1) * s_dim], s_dim)
                     
-                    replay_buffers[j].store(state, actions[j], rewards[j], next_state, done)
+                    replay_buffers[j].store(state=state[j], action=actions[j], reward=rewards[j], next_state=next_state[j], done=done)
                     agents[j].learn(replay_buffers[j], batch_size=128)  # Larger batch size
 
                 state = next_state
