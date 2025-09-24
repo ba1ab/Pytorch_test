@@ -47,7 +47,7 @@ class uavENV:
         self.ue_block = np.zeros(self.n_ues, dtype=int)
 
         self.step_count = 0
-        self.max_steps = 500
+        self.max_steps = 200
 
         self.state_dim = 3 + 3 * self.n_ues
         self.action_dim = 4
@@ -101,12 +101,13 @@ class uavENV:
         uav_energy = np.zeros(self.n_uavs)
         time = np.zeros(self.n_uavs)
         offload_records = []
-        
+        # print(f"actions: {actions}")
 
         for i in range(self.n_uavs):
             action = np.clip((actions[i] + 1) / 2 , 0, 1)
-            action = np.nan_to_num(action, nan=0.0)
             # print(f"action: {action}")
+            action = np.nan_to_num(action, nan=0.0)
+            
             ue_id = int(action[0] * self.n_ues) % self.n_ues
             theta = float(action[1] * 2 * np.pi)
             dist_scalar = action[2]
@@ -212,6 +213,7 @@ class uavENV:
                 rewards[i] += -100.0
 
         self.step_count += 1
+        print(f"step_count: {self.step_count}")
         done = (self.step_count >= self.max_steps) or (np.all(self.ue_tasks <= 0))
 
         info = {
@@ -222,7 +224,7 @@ class uavENV:
             "time": time,
             "offload_ratio": offload_ratio,
         }
-                    
+        # print(info)            
         return self.get_obs_all(), rewards, done, info
 
     def update_ue(self):
@@ -233,9 +235,9 @@ class uavENV:
             self.ue_locations[i,0] = np.clip(self.ue_locations[i,0] + dist_ue * math.cos(theta_ue), 0, self.width)
             self.ue_locations[i,1] = np.clip(self.ue_locations[i,1] + dist_ue * math.sin(theta_ue), 0, self.length)
 
-            arrival = np.random.rand() < 0.1
-            if arrival:
-                self.ue_tasks[i] += np.random.randint(self.MIN_TASK//10, self.MIN_TASK//2)
+            # arrival = np.random.rand() < 0.1
+            # if arrival:
+            #     self.ue_tasks[i] += np.random.randint(self.MIN_TASK//10, self.MIN_TASK//2)
 
 
     def update_uav_location(self, uav_location, theta, dist):

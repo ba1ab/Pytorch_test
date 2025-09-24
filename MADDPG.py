@@ -58,6 +58,7 @@ class MADDPG_Agent:
 
         
         next_action = self.target_actor(next_state)
+        # print(f"next_action: {next_action}")
         # print(f"next_action shape: {next_action.shape}")
 
 

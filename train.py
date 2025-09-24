@@ -13,7 +13,7 @@ import pickle
 def pad_state(state, target_dim):
     return np.pad(state, (0, target_dim - len(state)), 'constant')
 
-def train_agents(env, n_episodes = 10):
+def train_agents(env, n_episodes = 100):
     # print(f"state dim: {env.state_dim}")
     n_uavs = env.n_uavs
     s_dim = env.state_dim
@@ -41,7 +41,7 @@ def train_agents(env, n_episodes = 10):
             print(f"Episode: {episode + 1}")
             state = env.reset()
             # print(f"State shape after reset: {state.shape}")
-            print(f"state: {state}")
+            # print(f"state: {state}")
             episode_reward = 0
             offloading_ratios = []
             energy_ = []
@@ -58,6 +58,7 @@ def train_agents(env, n_episodes = 10):
                     # uav_state = pad_state(uav_state, s_dim)
                     # print(f"State shape after padding: {uav_state.shape}")
                     action = agents[j].choose_action(uav_state)
+                    # print(f"action: {action}")
                     actions.append(action)
 
                 next_state, rewards, done, info = env.step(actions)
